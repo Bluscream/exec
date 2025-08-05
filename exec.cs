@@ -94,13 +94,15 @@ namespace exec
         private static class ShowWindowCommands
         {
             public const ushort SW_SHOWNORMAL = 1;
+            public const ushort SW_HIDE = 0;
         }
 
         private static class CommandLineFlags
         {
-            public const string WaitFlag = "/wait";
-            public const string AdminFlag = "/admin";
-            public const string UserFlag = "/user";
+            public const string WaitFlag = "/e:wait";
+            public const string AdminFlag = "/e:admin";
+            public const string UserFlag = "/e:user";
+            public const string HiddenFlag = "/e:hidden";
         }
 
         #endregion
@@ -115,6 +117,7 @@ namespace exec
             public bool WaitForExit { get; set; }
             public bool RunAsAdmin { get; set; }
             public bool RunAsUser { get; set; }
+            public bool RunHidden { get; set; }
             public string[] CommandArguments { get; set; } = Array.Empty<string>();
 
             /// <summary>
@@ -131,7 +134,7 @@ namespace exec
 
                 if (RunAsAdmin && RunAsUser)
                 {
-                    Console.Error.WriteLine("Error: Cannot specify both /admin and /user flags");
+                    Console.Error.WriteLine("Error: Cannot specify both /e:admin and /e:user flags");
                     return false;
                 }
 
@@ -164,25 +167,32 @@ namespace exec
             var options = new ExecutionOptions();
             var remainingArgs = args.ToList();
 
-            // Check for /wait flag
+            // Check for /e:wait flag
             if (remainingArgs.Contains(CommandLineFlags.WaitFlag))
             {
                 options.WaitForExit = true;
                 remainingArgs.Remove(CommandLineFlags.WaitFlag);
             }
 
-            // Check for /admin flag
+            // Check for /e:admin flag
             if (remainingArgs.Contains(CommandLineFlags.AdminFlag))
             {
                 options.RunAsAdmin = true;
                 remainingArgs.Remove(CommandLineFlags.AdminFlag);
             }
 
-            // Check for /user flag
+            // Check for /e:user flag
             if (remainingArgs.Contains(CommandLineFlags.UserFlag))
             {
                 options.RunAsUser = true;
                 remainingArgs.Remove(CommandLineFlags.UserFlag);
+            }
+
+            // Check for /e:hidden flag
+            if (remainingArgs.Contains(CommandLineFlags.HiddenFlag))
+            {
+                options.RunHidden = true;
+                remainingArgs.Remove(CommandLineFlags.HiddenFlag);
             }
 
             options.CommandArguments = remainingArgs.ToArray();
@@ -198,9 +208,10 @@ namespace exec
         /// </summary>
         /// <param name="fileName">The executable file name.</param>
         /// <param name="arguments">Command line arguments.</param>
+        /// <param name="hidden">Whether to run the process with a hidden window.</param>
         /// <returns>The started process.</returns>
         /// <exception cref="InvalidOperationException">Thrown when process creation fails.</exception>
-        private static Process StartProcessAsUser(string fileName, string arguments)
+        private static Process StartProcessAsUser(string fileName, string arguments, bool hidden = false)
         {
             if (!IsRunningAsAdministrator())
             {
@@ -209,7 +220,8 @@ namespace exec
                 {
                     FileName = fileName,
                     Arguments = arguments,
-                    UseShellExecute = false
+                    UseShellExecute = false,
+                    WindowStyle = hidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
                 };
                 return Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start process");
             }
@@ -238,13 +250,13 @@ namespace exec
                     {
                         cb = (uint)Marshal.SizeOf(typeof(STARTUPINFO)),
                         dwFlags = StartupInfoFlags.STARTF_USESHOWWINDOW,
-                        wShowWindow = ShowWindowCommands.SW_SHOWNORMAL
+                        wShowWindow = hidden ? ShowWindowCommands.SW_HIDE : ShowWindowCommands.SW_SHOWNORMAL
                     };
 
                     // Create process as user
                     if (!CreateProcessAsUser(hNewToken, fileName, arguments, IntPtr.Zero, IntPtr.Zero, 
                         false, ProcessCreationFlags.CREATE_NEW_CONSOLE | ProcessCreationFlags.NORMAL_PRIORITY_CLASS, 
-                        IntPtr.Zero, null, ref startupInfo, out PROCESS_INFORMATION processInfo))
+                        IntPtr.Zero, string.Empty, ref startupInfo, out PROCESS_INFORMATION processInfo))
                     {
                         throw new InvalidOperationException($"Failed to create process as user. Error: {Marshal.GetLastWin32Error()}");
                     }
@@ -287,7 +299,7 @@ namespace exec
                     // Force run as user (non-elevated)
                     string fileName = options.CommandArguments[0];
                     string arguments = string.Join(" ", options.CommandArguments.Skip(1));
-                    process = StartProcessAsUser(fileName, arguments);
+                    process = StartProcessAsUser(fileName, arguments, options.RunHidden);
                 }
                 else
                 {
@@ -299,7 +311,8 @@ namespace exec
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
-                        CreateNoWindow = true
+                        CreateNoWindow = true,
+                        WindowStyle = options.RunHidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
                     };
 
                     // Set verb for admin execution
@@ -310,6 +323,7 @@ namespace exec
                         startInfo.RedirectStandardOutput = false;
                         startInfo.RedirectStandardError = false;
                         startInfo.CreateNoWindow = false;
+                        startInfo.WindowStyle = options.RunHidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal;
                     }
 
                     process = Process.Start(startInfo);
@@ -366,7 +380,7 @@ namespace exec
                     // Force run as user (non-elevated)
                     string fileName = options.CommandArguments[0];
                     string arguments = string.Join(" ", options.CommandArguments.Skip(1));
-                    StartProcessAsUser(fileName, arguments);
+                    StartProcessAsUser(fileName, arguments, options.RunHidden);
                 }
                 else
                 {
@@ -376,7 +390,7 @@ namespace exec
                     {
                         FileName = command,
                         UseShellExecute = true,
-                        WindowStyle = ProcessWindowStyle.Normal
+                        WindowStyle = options.RunHidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
                     };
 
                     // Set verb for admin execution
