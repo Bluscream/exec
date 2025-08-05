@@ -1,0 +1,14 @@
+SaferCreateLevel
+SaferComputeTokenFromLevel
+SaferCloseLevel
+SAFER_SCOPEID_USER
+SAFER_LEVELID_NORMALUSER
+SAFER_LEVEL_OPEN
+CreateProcessAsUserW
+TOKEN_MANDATORY_LABEL
+SE_GROUP_INTEGRITY
+ConvertStringSidToSidW
+SetTokenInformation
+LocalFree
+STARTUPINFOW_FLAGS
+SHOW_WINDOW_CMD 

@@ -12,4 +12,7 @@
     <RootNamespace>Exec</RootNamespace>
     <Version>1.0.1.8</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Classes\**" />
+  </ItemGroup>
 </Project>
