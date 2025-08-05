@@ -73,9 +73,9 @@ public class AdvancedRun
     public bool ParseVarCommandLine { get; set; } = false;
 
     /// <summary>
-    /// Run mode (2 = Normal)
+    /// Run mode (1 = File, 2 = Command)
     /// </summary>
-    public AdvancedRunMode RunMode { get; set; } = AdvancedRunMode.Normal;
+    public AdvancedRunMode RunMode { get; set; } = AdvancedRunMode.File;
 
     /// <summary>
     /// Command window mode (1 = Hidden)
@@ -129,8 +129,8 @@ public class AdvancedRun
     /// </summary>
     public enum AdvancedRunMode
     {
-        Normal = 2,
-        Elevated = 1
+        File = 1,
+        Command = 2
     }
 
     /// <summary>
@@ -181,9 +181,15 @@ public class AdvancedRun
     /// <returns>The process that was started, or null if failed</returns>
     public Process? Execute()
     {
-        if (string.IsNullOrEmpty(ExeFilename))
+        // Validate based on RunMode
+        if (RunMode == AdvancedRunMode.File && string.IsNullOrEmpty(ExeFilename))
         {
-            throw new InvalidOperationException("ExeFilename must be specified");
+            throw new InvalidOperationException("ExeFilename must be specified when RunMode is File");
+        }
+        
+        if (RunMode == AdvancedRunMode.Command && string.IsNullOrEmpty(CommandLine))
+        {
+            throw new InvalidOperationException("CommandLine must be specified when RunMode is Command");
         }
 
         if (!File.Exists(AdvancedRunPath))
@@ -239,9 +245,11 @@ public class AdvancedRun
     {
         var sb = new StringBuilder();
 
-        // Required parameters
-        if (!string.IsNullOrEmpty(ExeFilename))
+        // Required parameters based on RunMode
+        if (RunMode == AdvancedRunMode.File && !string.IsNullOrEmpty(ExeFilename))
+        {
             sb.Append($"/EXEFilename \"{ExeFilename}\" ");
+        }
 
         if (!string.IsNullOrEmpty(CommandLine))
             sb.Append($"/CommandLine \"{CommandLine}\" ");
@@ -289,7 +297,7 @@ public class AdvancedRun
             OSCompatMode = false,
             UseSearchPath = false,
             ParseVarCommandLine = false,
-            RunMode = AdvancedRunMode.Normal,
+            RunMode = AdvancedRunMode.File,
             CommandWindowMode = AdvancedRunCommandWindowMode.Hidden
         };
     }

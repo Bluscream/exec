@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Principal;
 using System.Text;
 using System.Runtime.InteropServices;
+using Exec;
 
 namespace Exec;
 
@@ -171,7 +172,7 @@ public class Program
     #region Process Execution Methods
 
     /// <summary>
-    /// Starts a process with user privileges (non-elevated) using WinSafer APIs.
+    /// Starts a process with user privileges (non-elevated) using AdvancedRun when running as admin.
     /// </summary>
     /// <param name="fileName">The executable file name.</param>
     /// <param name="arguments">Command line arguments.</param>
@@ -194,78 +195,31 @@ public class Program
             return Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start process");
         }
 
-        // When running as admin, use WinSafer APIs to create a limited token and start process
-        IntPtr saferHandle = IntPtr.Zero;
-        IntPtr psid = IntPtr.Zero;
-        try
+        // When running as admin, use AdvancedRun to run as current user
+        var advancedRun = new AdvancedRun
         {
-            // 1. Create a new access token using WinSafer
-            if (!Native.SaferCreateLevel(Native.SaferConstants.SAFER_SCOPEID_USER, Native.SaferConstants.SAFER_LEVELID_NORMALUSER, Native.SaferConstants.SAFER_LEVEL_OPEN, out saferHandle, IntPtr.Zero))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
+            CommandLine = $"{fileName} {arguments}".Trim(), // Full command including executable
+            StartDirectory = "",
+            WaitProcess = false,
+            PriorityClass = ProcessPriorityClass.Normal,
+            WindowState = hidden ? AdvancedRun.AdvancedRunWindowState.Minimized : AdvancedRun.AdvancedRunWindowState.Normal,
+            RunAs = AdvancedRun.AdvancedRunAsMode.CurrentUserAsAdmin,
+            RunAsProcessName = "runtimebroker.exe",
+            EnvironmentVariablesMode = AdvancedRun.AdvancedRunEnvironmentVariablesMode.UseCurrent,
+            OSCompatMode = false,
+            UseSearchPath = false,
+            ParseVarCommandLine = false,
+            RunMode = AdvancedRun.AdvancedRunMode.Command,
+            CommandWindowMode = AdvancedRun.AdvancedRunCommandWindowMode.Hidden
+        };
 
-            if (!Native.SaferComputeTokenFromLevel(saferHandle, IntPtr.Zero, out IntPtr newAccessToken, 0, IntPtr.Zero))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-
-            // Set the token to medium integrity because SaferCreateLevel doesn't reduce the
-            // integrity level of the token and keep it as high.
-            if (!Native.ConvertStringSidToSid("S-1-16-8192", out psid))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-
-            var tml = new Native.TOKEN_MANDATORY_LABEL
-            {
-                Label = new Native.SID_AND_ATTRIBUTES
-                {
-                    Sid = psid,
-                    Attributes = Native.TokenConstants.SE_GROUP_INTEGRITY
-                }
-            };
-
-            var length = (uint)Marshal.SizeOf(tml);
-            var tmlPtr = Marshal.AllocHGlobal((int)length);
-            try
-            {
-                Marshal.StructureToPtr(tml, tmlPtr, false);
-                if (!Native.SetTokenInformation(newAccessToken, Native.TokenConstants.TOKEN_INTEGRITY_LEVEL, tmlPtr, length))
-                    throw new Win32Exception(Marshal.GetLastWin32Error());
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(tmlPtr);
-            }
-
-            // 2. Start process using the new access token
-            var commandLine = $"{fileName} {arguments}".TrimEnd();
-            var startupInfo = new Native.STARTUPINFO
-            {
-                cb = (uint)Marshal.SizeOf(typeof(Native.STARTUPINFO)),
-                dwFlags = hidden ? Native.StartupInfoFlags.STARTF_USESHOWWINDOW : 0,
-                wShowWindow = hidden ? Native.ShowWindowCommands.SW_HIDE : Native.ShowWindowCommands.SW_SHOWNORMAL
-            };
-            
-            if (Native.CreateProcessAsUser(newAccessToken, string.Empty, commandLine, IntPtr.Zero, IntPtr.Zero, 
-                false, 0, IntPtr.Zero, string.Empty, ref startupInfo, out Native.PROCESS_INFORMATION processInfo))
-            {
-                Native.CloseHandle(processInfo.hProcess);
-                Native.CloseHandle(processInfo.hThread);
-                return Process.GetProcessById((int)processInfo.dwProcessId);
-            }
-            else
-            {
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            }
-        }
-        finally
+        var process = advancedRun.Execute();
+        if (process == null)
         {
-            if (saferHandle != IntPtr.Zero)
-            {
-                Native.SaferCloseLevel(saferHandle);
-            }
-
-            if (psid != IntPtr.Zero)
-            {
-                Native.LocalFree(psid);
-            }
+            throw new InvalidOperationException("Failed to start process using AdvancedRun");
         }
+
+        return process;
     }
 
     /// <summary>
