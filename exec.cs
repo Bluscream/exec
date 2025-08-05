@@ -243,7 +243,7 @@ namespace exec
             Console.WriteLine("Notes:");
             Console.WriteLine("  - /e:admin and /e:user are mutually exclusive");
             Console.WriteLine("  - /e:hidden can be combined with any other option");
-            Console.WriteLine("  - When using /e:wait, output is captured and displayed (except for admin/user modes)");
+            Console.WriteLine("  - When using /e:wait, output is captured and displayed (except for admin mode)");
             Console.WriteLine("  - The /e: prefix helps avoid conflicts with target application arguments");
         }
 
@@ -261,9 +261,10 @@ namespace exec
         /// <exception cref="InvalidOperationException">Thrown when process creation fails.</exception>
         private static Process StartProcessAsUser(string fileName, string arguments, bool hidden = false)
         {
+            // Always use normal Process.Start when not running as administrator
+            // The /e:user flag is primarily useful when running as admin to force non-elevated execution
             if (!IsRunningAsAdministrator())
             {
-                // If not running as admin, just use normal Process.Start
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = fileName,
@@ -274,6 +275,7 @@ namespace exec
                 return Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start process");
             }
 
+            // When running as admin, use Windows API to create a non-elevated process
             // Get the current process token
             if (!OpenProcessToken(Process.GetCurrentProcess().Handle, 
                 TokenAccessRights.TOKEN_QUERY | TokenAccessRights.TOKEN_DUPLICATE, out IntPtr hToken))
@@ -347,7 +349,30 @@ namespace exec
                     // Force run as user (non-elevated)
                     string fileName = options.CommandArguments[0];
                     string arguments = string.Join(" ", options.CommandArguments.Skip(1));
-                    process = StartProcessAsUser(fileName, arguments, options.RunHidden);
+                    
+                    // For user mode, we need to handle output redirection differently
+                    // since we can't redirect output when using CreateProcessAsUser
+                    if (IsRunningAsAdministrator())
+                    {
+                        // When running as admin and forcing user mode, we can't redirect output
+                        // So we'll just start the process and wait for it
+                        process = StartProcessAsUser(fileName, arguments, options.RunHidden);
+                    }
+                    else
+                    {
+                        // When not running as admin, use normal Process.Start with output redirection
+                        var startInfo = new ProcessStartInfo
+                        {
+                            FileName = fileName,
+                            Arguments = arguments,
+                            UseShellExecute = false,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            CreateNoWindow = true,
+                            WindowStyle = options.RunHidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
+                        };
+                        process = Process.Start(startInfo);
+                    }
                 }
                 else
                 {
@@ -383,11 +408,12 @@ namespace exec
                     return 1;
                 }
 
-                // Read output asynchronously (only if not running as admin and not forced as user)
+                // Read output asynchronously
                 string output = "";
                 string error = "";
                 
-                if (!options.RunAsAdmin && !options.RunAsUser)
+                // Only try to read output if we have redirected it
+                if (process.StartInfo.RedirectStandardOutput)
                 {
                     output = process.StandardOutput.ReadToEnd();
                     error = process.StandardError.ReadToEnd();
@@ -396,8 +422,8 @@ namespace exec
                 // Wait for process to complete
                 process.WaitForExit();
                 
-                // Print output (only if not running as admin and not forced as user)
-                if (!options.RunAsAdmin && !options.RunAsUser)
+                // Print output if we captured it
+                if (process.StartInfo.RedirectStandardOutput)
                 {
                     if (!string.IsNullOrEmpty(output))
                         Console.Out.Write(output);
