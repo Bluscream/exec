@@ -275,7 +275,29 @@ namespace exec
                 return Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start process");
             }
 
-            // When running as admin, use Windows API to create a non-elevated process
+            // When running as admin, try a simpler approach first - use Process.Start with UseShellExecute
+            // This often works better for GUI applications
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = true,
+                    WindowStyle = hidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
+                };
+                
+                var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    return process;
+                }
+            }
+            catch (Exception)
+            {
+                // Fallback to Windows API method
+            }
+            
             // Get the current process token
             if (!OpenProcessToken(Process.GetCurrentProcess().Handle, 
                 TokenAccessRights.TOKEN_QUERY | TokenAccessRights.TOKEN_DUPLICATE, out IntPtr hToken))
@@ -302,15 +324,21 @@ namespace exec
                         dwFlags = StartupInfoFlags.STARTF_USESHOWWINDOW,
                         wShowWindow = hidden ? ShowWindowCommands.SW_HIDE : ShowWindowCommands.SW_SHOWNORMAL
                     };
-
-                    // Create process as user
+                    
+                    // Create process as user - use different flags for better window creation
+                    uint creationFlags = ProcessCreationFlags.NORMAL_PRIORITY_CLASS;
+                    if (!hidden)
+                    {
+                        creationFlags |= ProcessCreationFlags.CREATE_NEW_CONSOLE;
+                    }
+                    
                     if (!CreateProcessAsUser(hNewToken, fileName, arguments, IntPtr.Zero, IntPtr.Zero, 
-                        false, ProcessCreationFlags.CREATE_NEW_CONSOLE | ProcessCreationFlags.NORMAL_PRIORITY_CLASS, 
+                        false, creationFlags, 
                         IntPtr.Zero, string.Empty, ref startupInfo, out PROCESS_INFORMATION processInfo))
                     {
                         throw new InvalidOperationException($"Failed to create process as user. Error: {Marshal.GetLastWin32Error()}");
                     }
-
+                    
                     try
                     {
                         // Return a Process object for the created process
