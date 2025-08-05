@@ -198,18 +198,19 @@ public class Program
         // When running as admin, use AdvancedRun to run as current user
         var advancedRun = new AdvancedRun
         {
-            CommandLine = $"{fileName} {arguments}".Trim(), // Full command including executable
+            ExeFilename = fileName,
+            CommandLine = $"{arguments}".Trim(), // Full command including executable
             StartDirectory = "",
             WaitProcess = false,
             PriorityClass = ProcessPriorityClass.Normal,
-            WindowState = hidden ? AdvancedRun.AdvancedRunWindowState.Minimized : AdvancedRun.AdvancedRunWindowState.Normal,
+            WindowState = hidden ? AdvancedRun.AdvancedRunWindowState.Hidden : AdvancedRun.AdvancedRunWindowState.Normal,
             RunAs = AdvancedRun.AdvancedRunAsMode.CurrentUserAsAdmin,
             RunAsProcessName = "runtimebroker.exe",
             EnvironmentVariablesMode = AdvancedRun.AdvancedRunEnvironmentVariablesMode.UseCurrent,
             OSCompatMode = false,
             UseSearchPath = false,
             ParseVarCommandLine = false,
-            RunMode = AdvancedRun.AdvancedRunMode.Command,
+            RunMode = AdvancedRun.AdvancedRunMode.File,
             CommandWindowMode = AdvancedRun.AdvancedRunCommandWindowMode.Hidden
         };
 
