@@ -1,1 +1,1 @@
-build.ps1 -git -github -publish -repo exec
+pwsh -NoProfile -ExecutionPolicy Bypass -File D:\Scripts\build.ps1 -Git -Github -Publish -Repo exec
