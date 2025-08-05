@@ -103,6 +103,7 @@ namespace exec
             public const string AdminFlag = "/e:admin";
             public const string UserFlag = "/e:user";
             public const string HiddenFlag = "/e:hidden";
+            public const string HelpFlag = "/e:help";
         }
 
         #endregion
@@ -118,6 +119,7 @@ namespace exec
             public bool RunAsAdmin { get; set; }
             public bool RunAsUser { get; set; }
             public bool RunHidden { get; set; }
+            public bool ShowHelp { get; set; }
             public string[] CommandArguments { get; set; } = Array.Empty<string>();
 
             /// <summary>
@@ -126,6 +128,11 @@ namespace exec
             /// <returns>True if valid, false otherwise.</returns>
             public bool Validate()
             {
+                if (ShowHelp)
+                {
+                    return true; // Help mode doesn't need command validation
+                }
+
                 if (CommandArguments.Length == 0)
                 {
                     Console.Error.WriteLine("Error: No command specified");
@@ -195,8 +202,49 @@ namespace exec
                 remainingArgs.Remove(CommandLineFlags.HiddenFlag);
             }
 
+            // Check for /e:help flag
+            if (remainingArgs.Contains(CommandLineFlags.HelpFlag))
+            {
+                options.ShowHelp = true;
+                remainingArgs.Remove(CommandLineFlags.HelpFlag);
+            }
+
             options.CommandArguments = remainingArgs.ToArray();
             return options;
+        }
+
+        #endregion
+
+        #region Help Methods
+
+        /// <summary>
+        /// Displays help information about available command line arguments.
+        /// </summary>
+        private static void ShowHelp()
+        {
+            Console.WriteLine("exec - Command-line utility for executing processes with various privilege levels and wait options.");
+            Console.WriteLine();
+            Console.WriteLine("Usage: exec [options] <command> [arguments...]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  /e:help     Show this help message");
+            Console.WriteLine("  /e:wait     Wait for the process to complete and return its exit code");
+            Console.WriteLine("  /e:admin    Run the process with administrator privileges");
+            Console.WriteLine("  /e:user     Force run the process with user privileges (non-elevated)");
+            Console.WriteLine("  /e:hidden   Run the process with a hidden window");
+            Console.WriteLine();
+            Console.WriteLine("Examples:");
+            Console.WriteLine("  exec notepad.exe                    # Open Notepad");
+            Console.WriteLine("  exec /e:wait cmd /c \"echo test\"     # Run command and wait for completion");
+            Console.WriteLine("  exec /e:admin regedit.exe           # Run Registry Editor as admin");
+            Console.WriteLine("  exec /e:user /e:hidden calc.exe     # Run Calculator as user with hidden window");
+            Console.WriteLine("  exec /e:wait /e:admin cmd /c \"dir\" # Run dir command as admin and wait");
+            Console.WriteLine();
+            Console.WriteLine("Notes:");
+            Console.WriteLine("  - /e:admin and /e:user are mutually exclusive");
+            Console.WriteLine("  - /e:hidden can be combined with any other option");
+            Console.WriteLine("  - When using /e:wait, output is captured and displayed (except for admin/user modes)");
+            Console.WriteLine("  - The /e: prefix helps avoid conflicts with target application arguments");
         }
 
         #endregion
@@ -424,13 +472,19 @@ namespace exec
         {
             if (args.Length == 0)
             {
-                Console.Error.WriteLine("Error: No arguments provided");
-                return 1;
+                ShowHelp();
+                return 0;
             }
 
             try
             {
                 var options = ParseArguments(args);
+                
+                if (options.ShowHelp)
+                {
+                    ShowHelp();
+                    return 0;
+                }
                 
                 if (!options.Validate())
                 {
