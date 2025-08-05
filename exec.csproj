@@ -10,5 +10,6 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <AssemblyName>exec</AssemblyName>
     <RootNamespace>Exec</RootNamespace>
+    <Version>1.0.0.0</Version>
   </PropertyGroup>
 </Project>
